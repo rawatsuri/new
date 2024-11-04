@@ -12,28 +12,8 @@ export type Post = {
   time?: string;
 };
 
-type TeamMember = {
-  id: string;
-  name: string;
-  email: string;
-  role: 'Admin' | 'Editor' | 'Viewer';
-  avatar?: string;
-};
-
-type Settings = {
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  theme: 'light' | 'dark' | 'system';
-  aiSuggestions: boolean;
-  aiModel: 'gpt-4' | 'gpt-3.5';
-  twoFactorAuth: boolean;
-  loginNotifications: boolean;
-};
-
 type State = {
   posts: Post[];
-  teamMembers: TeamMember[];
-  settings: Settings;
   selectedPlatforms: string[];
   selectedTone: string;
   currentContent: string;
@@ -44,128 +24,162 @@ type State = {
   setCurrentContent: (content: string) => void;
   generateContent: () => Promise<void>;
   schedulePost: () => Promise<void>;
-  inviteTeamMember: (email: string, role: string) => void;
-  updateSettings: (newSettings: Partial<Settings>) => void;
+  fetchPosts: () => Promise<void>;
+  suggestHashtags: (content: string, platform: string) => Promise<string[]>;
+  getBestPostingTime: () => Promise<{ time: string; avg_engagement: number; }[]>;
 };
 
-const useStore = create<State>((set) => ({
-  posts: [
-    {
-      id: '1',
-      platform: 'Instagram',
-      content: 'Exciting news! Our latest AI feature is now live...',
-      status: 'Published',
-      date: '2024-03-15',
-      engagement: '2.5K'
-    },
-    {
-      id: '2',
-      platform: 'LinkedIn',
-      content: 'Join us for an exclusive webinar on digital transformation...',
-      status: 'Scheduled',
-      date: '2024-03-20',
-      engagement: '-'
-    }
-  ],
-  teamMembers: [
-    {
-      id: '1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      role: 'Admin'
-    },
-    {
-      id: '2',
-      name: 'Jane Smith',
-      email: 'jane@example.com',
-      role: 'Editor'
-    }
-  ],
-  settings: {
-    emailNotifications: true,
-    pushNotifications: false,
-    theme: 'light',
-    aiSuggestions: true,
-    aiModel: 'gpt-4',
-    twoFactorAuth: false,
-    loginNotifications: true
-  },
+const useStore = create<State>((set, get) => ({
+  posts: [],
   selectedPlatforms: [],
   selectedTone: '',
   currentContent: '',
 
-  addPost: (post) =>
-    set((state) => ({
-      posts: [...state.posts, { ...post, id: Math.random().toString(36).substr(2, 9) }]
-    })),
+  addPost: async (post) => {
+    try {
+      const response = await fetch('/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(post),
+      });
+      
+      if (!response.ok) throw new Error('Failed to create post');
+      
+      const newPost = await response.json();
+      set((state) => ({ posts: [...state.posts, newPost] }));
+    } catch (error) {
+      console.error('Error adding post:', error);
+      throw error;
+    }
+  },
 
-  updatePost: (id, updatedPost) =>
-    set((state) => ({
-      posts: state.posts.map((post) =>
-        post.id === id ? { ...post, ...updatedPost } : post
-      )
-    })),
+  updatePost: async (id, updatedPost) => {
+    try {
+      const response = await fetch(`/api/posts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedPost),
+      });
+      
+      if (!response.ok) throw new Error('Failed to update post');
+      
+      set((state) => ({
+        posts: state.posts.map((post) =>
+          post.id === id ? { ...post, ...updatedPost } : post
+        ),
+      }));
+    } catch (error) {
+      console.error('Error updating post:', error);
+      throw error;
+    }
+  },
 
   setSelectedPlatforms: (platforms) => set({ selectedPlatforms: platforms }),
   setSelectedTone: (tone) => set({ selectedTone: tone }),
   setCurrentContent: (content) => set({ currentContent: content }),
 
   generateContent: async () => {
-    const state = useStore.getState();
-    if (!state.selectedTone || state.selectedPlatforms.length === 0) {
+    const { selectedPlatforms, selectedTone } = get();
+    
+    if (!selectedTone || selectedPlatforms.length === 0) {
       throw new Error('Please select platforms and tone first');
     }
 
-    // Simulate AI content generation
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    const generatedContent = `Generated content for ${state.selectedPlatforms.join(', ')} in ${state.selectedTone} tone.`;
-    set({ currentContent: generatedContent });
+    try {
+      const response = await fetch('/api/generate-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platforms: selectedPlatforms,
+          tone: selectedTone,
+          keywords: ['social media', 'content', 'engagement'],
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to generate content');
+
+      const { content } = await response.json();
+      set({ currentContent: content });
+    } catch (error) {
+      console.error('Error generating content:', error);
+      throw error;
+    }
   },
 
   schedulePost: async () => {
-    const state = useStore.getState();
-    if (!state.currentContent || state.selectedPlatforms.length === 0) {
+    const { selectedPlatforms, currentContent } = get();
+    
+    if (!currentContent || selectedPlatforms.length === 0) {
       throw new Error('Please generate content and select platforms first');
     }
 
-    // Schedule post for each selected platform
-    state.selectedPlatforms.forEach((platform) => {
+    try {
       const scheduledDate = format(new Date().setDate(new Date().getDate() + 1), 'yyyy-MM-dd');
-      state.addPost({
-        platform,
-        content: state.currentContent,
-        status: 'Scheduled',
-        date: scheduledDate,
-        engagement: '-',
-        time: '10:00 AM'
+      
+      for (const platform of selectedPlatforms) {
+        await get().addPost({
+          platform,
+          content: currentContent,
+          status: 'Scheduled',
+          date: scheduledDate,
+          engagement: '-',
+          time: '10:00 AM',
+        });
+      }
+
+      set({
+        selectedPlatforms: [],
+        selectedTone: '',
+        currentContent: '',
       });
-    });
-
-    // Reset form
-    set({
-      selectedPlatforms: [],
-      selectedTone: '',
-      currentContent: ''
-    });
+    } catch (error) {
+      console.error('Error scheduling post:', error);
+      throw error;
+    }
   },
 
-  inviteTeamMember: (email: string, role: string) => {
-    set((state) => ({
-      teamMembers: [...state.teamMembers, {
-        id: Math.random().toString(36).substr(2, 9),
-        name: email.split('@')[0],
-        email,
-        role: role as 'Admin' | 'Editor' | 'Viewer'
-      }]
-    }));
-    toast.success(`Invitation sent to ${email}`);
+  fetchPosts: async () => {
+    try {
+      const response = await fetch('/api/posts');
+      if (!response.ok) throw new Error('Failed to fetch posts');
+      
+      const posts = await response.json();
+      set({ posts });
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      throw error;
+    }
   },
 
-  updateSettings: (newSettings) =>
-    set((state) => ({
-      settings: { ...state.settings, ...newSettings }
-    }))
+  suggestHashtags: async (content: string, platform: string) => {
+    try {
+      const response = await fetch('/api/suggest-hashtags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, platform }),
+      });
+
+      if (!response.ok) throw new Error('Failed to suggest hashtags');
+
+      const { hashtags } = await response.json();
+      return hashtags;
+    } catch (error) {
+      console.error('Error suggesting hashtags:', error);
+      throw error;
+    }
+  },
+
+  getBestPostingTime: async () => {
+    try {
+      const response = await fetch('/api/best-posting-time');
+      if (!response.ok) throw new Error('Failed to get best posting time');
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting best posting time:', error);
+      throw error;
+    }
+  },
 }));
 
 export default useStore;

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Instagram, Linkedin, Twitter, Facebook, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Instagram, Linkedin, Twitter, Facebook, Send, Hash } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useStore from '../store/useStore';
 
@@ -27,15 +27,36 @@ export default function ContentGenerator() {
     currentContent,
     setCurrentContent,
     generateContent,
-    schedulePost
+    schedulePost,
+    suggestHashtags,
+    getBestPostingTime
   } = useStore();
 
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [suggestedHashtags, setSuggestedHashtags] = useState<string[]>([]);
+  const [bestTimes, setBestTimes] = useState<{ time: string; avg_engagement: number; }[]>([]);
+
+  useEffect(() => {
+    const fetchBestTimes = async () => {
+      try {
+        const times = await getBestPostingTime();
+        setBestTimes(times);
+      } catch (error) {
+        console.error('Error fetching best times:', error);
+      }
+    };
+    fetchBestTimes();
+  }, []);
+
   const handleGenerate = async () => {
+    setIsGenerating(true);
     try {
       await generateContent();
       toast.success('Content generated successfully!');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to generate content');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -45,6 +66,20 @@ export default function ContentGenerator() {
       toast.success('Post scheduled successfully!');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to schedule post');
+    }
+  };
+
+  const handleGetHashtags = async () => {
+    if (!currentContent || selectedPlatforms.length === 0) {
+      toast.error('Please generate content and select a platform first');
+      return;
+    }
+
+    try {
+      const hashtags = await suggestHashtags(currentContent, selectedPlatforms[0]);
+      setSuggestedHashtags(hashtags);
+    } catch (error) {
+      toast.error('Failed to generate hashtags');
     }
   };
 
@@ -105,9 +140,12 @@ export default function ContentGenerator() {
         <div className="flex justify-between items-center">
           <button
             onClick={handleGenerate}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={isGenerating}
+            className={`px-6 py-2 bg-blue-600 text-white rounded-lg transition-colors ${
+              isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
+            }`}
           >
-            Generate Content
+            {isGenerating ? 'Generating...' : 'Generate Content'}
           </button>
           <button
             onClick={handleSchedule}
@@ -120,21 +158,53 @@ export default function ContentGenerator() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-medium mb-4">AI Suggestions</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">AI Suggestions</h3>
+          <button
+            onClick={handleGetHashtags}
+            className="flex items-center px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+          >
+            <Hash className="w-4 h-4 mr-2" />
+            Generate Hashtags
+          </button>
+        </div>
+
         <div className="space-y-4">
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-sm text-gray-600 mb-2">Suggested Hashtags</p>
             <div className="flex flex-wrap gap-2">
-              {['#socialmedia', '#digitalmarketing', '#contentcreation', '#growthhacking'].map(tag => (
-                <span key={tag} className="px-3 py-1 bg-white rounded-full text-sm text-gray-700 border">
+              {suggestedHashtags.map(tag => (
+                <span
+                  key={tag}
+                  className="px-3 py-1 bg-white rounded-full text-sm text-gray-700 border cursor-pointer hover:bg-gray-50"
+                  onClick={() => setCurrentContent(prev => `${prev} ${tag}`)}
+                >
                   {tag}
                 </span>
               ))}
+              {suggestedHashtags.length === 0 && (
+                <span className="text-sm text-gray-500">
+                  Click "Generate Hashtags" to get suggestions
+                </span>
+              )}
             </div>
           </div>
+          
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-sm text-gray-600 mb-2">Best Time to Post</p>
-            <p className="text-sm text-gray-800">Tuesday, 10:00 AM - 12:00 PM (Highest engagement rate)</p>
+            {bestTimes.length > 0 ? (
+              <div className="space-y-2">
+                {bestTimes.map((time, index) => (
+                  <p key={index} className="text-sm text-gray-800">
+                    {time.time} - Average engagement: {time.avg_engagement.toFixed(1)}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Best posting times will be calculated based on engagement data
+              </p>
+            )}
           </div>
         </div>
       </div>
