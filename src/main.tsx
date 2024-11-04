@@ -4,23 +4,36 @@ import { Toaster } from 'react-hot-toast';
 import App from './App';
 import './index.css';
 
-// Initialize posts on app start
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Root element not found');
+
+// Initialize store with default data
 const initializeApp = async () => {
   try {
-    await fetch('/api/posts');
+    const response = await fetch('/api/posts');
+    if (!response.ok) {
+      throw new Error('Failed to fetch posts');
+    }
   } catch (error) {
     console.error('Failed to initialize posts:', error);
   }
 };
 
+// Initialize the app
 initializeApp();
-
-const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error('Root element not found');
 
 createRoot(rootElement).render(
   <StrictMode>
     <App />
-    <Toaster position="top-right" />
+    <Toaster 
+      position="top-right"
+      toastOptions={{
+        duration: 3000,
+        style: {
+          background: '#363636',
+          color: '#fff',
+        },
+      }}
+    />
   </StrictMode>
 );

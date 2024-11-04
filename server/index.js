@@ -4,18 +4,24 @@ import sqlite3 from 'sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { generateContent, generateHashtags, analyzeBestPostingTime } from './ai/contentGenerator.js';
+import cors from 'cors';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Serve static files from the dist directory
+app.use(express.static(join(__dirname, '../dist')));
+
 // Database setup
 const dbPromise = open({
-  filename: join(__dirname, 'database.sqlite'),
+  filename: ':memory:', // Use in-memory database for development
   driver: sqlite3.Database
 });
-
-app.use(express.json());
 
 // Initialize database tables
 async function initDB() {
@@ -38,11 +44,34 @@ async function initDB() {
       engagement INTEGER DEFAULT 0
     );
   `);
+
+  // Add some initial data
+  const posts = await db.all('SELECT * FROM posts');
+  if (posts.length === 0) {
+    const initialPosts = [
+      {
+        id: '1',
+        platform: 'Instagram',
+        content: 'Welcome to our new social media platform!',
+        status: 'Published',
+        date: new Date().toISOString().split('T')[0],
+        time: '09:00',
+        engagement: 150
+      }
+    ];
+
+    for (const post of initialPosts) {
+      await db.run(
+        'INSERT INTO posts (id, platform, content, status, date, time, engagement) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [post.id, post.platform, post.content, post.status, post.date, post.time, post.engagement]
+      );
+    }
+  }
 }
 
 initDB().catch(console.error);
 
-// AI Content Generation
+// API Routes
 app.post('/api/generate-content', async (req, res) => {
   try {
     const { platforms, tone, keywords } = req.body;
@@ -54,7 +83,6 @@ app.post('/api/generate-content', async (req, res) => {
   }
 });
 
-// Post Management
 app.post('/api/posts', async (req, res) => {
   try {
     const db = await dbPromise;
@@ -84,7 +112,6 @@ app.get('/api/posts', async (req, res) => {
   }
 });
 
-// Analytics
 app.get('/api/analytics', async (req, res) => {
   try {
     const db = await dbPromise;
@@ -102,7 +129,6 @@ app.get('/api/analytics', async (req, res) => {
   }
 });
 
-// Hashtag Suggestions
 app.post('/api/suggest-hashtags', async (req, res) => {
   try {
     const { content, platform } = req.body;
@@ -114,7 +140,6 @@ app.post('/api/suggest-hashtags', async (req, res) => {
   }
 });
 
-// Best Time to Post
 app.get('/api/best-posting-time', async (req, res) => {
   try {
     const db = await dbPromise;
@@ -125,6 +150,11 @@ app.get('/api/best-posting-time', async (req, res) => {
     console.error('Error calculating best posting time:', error);
     res.status(500).json({ error: 'Failed to calculate best posting time' });
   }
+});
+
+// Handle all other routes by serving the index.html
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, '../dist/index.html'));
 });
 
 app.listen(port, () => {
