@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Instagram, Linkedin, Twitter, Facebook, Send } from 'lucide-react';
+import toast from 'react-hot-toast';
+import useStore from '../store/useStore';
 
 const platforms = [
   { name: 'Instagram', icon: Instagram },
@@ -17,9 +19,34 @@ const tones = [
 ];
 
 export default function ContentGenerator() {
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  const [selectedTone, setSelectedTone] = useState('');
-  const [content, setContent] = useState('');
+  const {
+    selectedPlatforms,
+    setSelectedPlatforms,
+    selectedTone,
+    setSelectedTone,
+    currentContent,
+    setCurrentContent,
+    generateContent,
+    schedulePost
+  } = useStore();
+
+  const handleGenerate = async () => {
+    try {
+      await generateContent();
+      toast.success('Content generated successfully!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to generate content');
+    }
+  };
+
+  const handleSchedule = async () => {
+    try {
+      await schedulePost();
+      toast.success('Post scheduled successfully!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to schedule post');
+    }
+  };
 
   return (
     <div className="p-8">
@@ -31,10 +58,10 @@ export default function ContentGenerator() {
           {platforms.map(({ name, icon: Icon }) => (
             <button
               key={name}
-              onClick={() => setSelectedPlatforms(prev => 
-                prev.includes(name) 
-                  ? prev.filter(p => p !== name)
-                  : [...prev, name]
+              onClick={() => setSelectedPlatforms(
+                selectedPlatforms.includes(name)
+                  ? selectedPlatforms.filter(p => p !== name)
+                  : [...selectedPlatforms, name]
               )}
               className={`flex items-center px-4 py-2 rounded-lg border ${
                 selectedPlatforms.includes(name)
@@ -68,8 +95,8 @@ export default function ContentGenerator() {
         <h3 className="text-lg font-medium mb-4">Content</h3>
         <div className="mb-6">
           <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+            value={currentContent}
+            onChange={(e) => setCurrentContent(e.target.value)}
             placeholder="Start typing or generate content..."
             className="w-full h-40 p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
@@ -77,11 +104,13 @@ export default function ContentGenerator() {
 
         <div className="flex justify-between items-center">
           <button
+            onClick={handleGenerate}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Generate Content
           </button>
           <button
+            onClick={handleSchedule}
             className="flex items-center px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
             <Send className="w-4 h-4 mr-2" />
